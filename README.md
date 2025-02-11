@@ -1,6 +1,14 @@
 # Symfony-Notes
 
 
+
+Get environment in test
+
+```php
+echo "\nEnvironment: ".  self::getContainer()->getParameter('kernel.environment') . "\n";
+```
+
+
 ## Custom service in a test
 
 ```php
