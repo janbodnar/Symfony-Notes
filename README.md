@@ -1,6 +1,4 @@
-# Symfony-Notest
-Symfony notes
-
+# Symfony-Notes
 
 
 ## Custom service in a test
