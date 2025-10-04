@@ -1698,6 +1698,389 @@ Access the full profiler at /_profiler to see detailed route information
 for any request. The routing panel shows all routes, which one matched,  
 and why others didn't match. Essential for debugging complex routing.  
 
+## Route Groups with Multiple Constraints
+
+Combining multiple constraints in route groups.  
+
+```php
+<?php
+
+namespace App\Controller;
+
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Annotation\Route;
+
+#[Route(
+    '/admin',
+    requirements: ['_locale' => 'en|fr'],
+    defaults: ['_locale' => 'en'],
+    schemes: ['https']
+)]
+class SecureAdminController extends AbstractController
+{
+    #[Route('/{_locale}/dashboard', name: 'secure_admin_dashboard')]
+    public function dashboard(string $_locale): Response
+    {
+        return new Response(
+            sprintf('Secure Admin Dashboard - Locale: %s', $_locale)
+        );
+    }
+
+    #[Route('/{_locale}/reports', name: 'secure_admin_reports')]
+    public function reports(string $_locale): Response
+    {
+        return new Response(
+            sprintf('Secure Admin Reports - Locale: %s', $_locale)
+        );
+    }
+}
+```
+
+Class-level constraints apply to all routes in the controller. This  
+ensures consistent security (HTTPS only), localization, and other  
+requirements across related routes without repetition.  
+
+## Route Aliases
+
+Creating multiple routes for the same controller action.  
+
+```php
+<?php
+
+namespace App\Controller;
+
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Annotation\Route;
+
+class AliasController extends AbstractController
+{
+    #[Route('/home', name: 'home_main')]
+    #[Route('/', name: 'home_root')]
+    #[Route('/index', name: 'home_index')]
+    public function home(): Response
+    {
+        return new Response('Welcome to the homepage');
+    }
+}
+```
+
+Multiple Route attributes create aliases for the same action. Useful for  
+maintaining backward compatibility when renaming routes or supporting  
+multiple URL conventions. Each route has a unique name for generation.  
+
+## Slug Routes with Custom Converters
+
+Using custom logic to convert slugs to entities.  
+
+```php
+<?php
+
+namespace App\Controller;
+
+use App\Entity\Article;
+use App\Repository\ArticleRepository;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\Routing\Annotation\Route;
+
+class ArticleViewController extends AbstractController
+{
+    #[Route('/article/{slug}', name: 'article_view')]
+    public function view(string $slug, ArticleRepository $repository): Response
+    {
+        $article = $repository->findOneBy(['slug' => $slug]);
+        
+        if (!$article) {
+            throw new NotFoundHttpException('Article not found');
+        }
+        
+        return $this->render('article/view.html.twig', [
+            'article' => $article
+        ]);
+    }
+}
+```
+
+When ParamConverter isn't configured, manually query the repository.  
+Inject the repository via dependency injection and use findOneBy() to  
+locate entities by slug or other unique fields.  
+
+## Wildcard Routes
+
+Capturing remaining URL segments.  
+
+```php
+<?php
+
+namespace App\Controller;
+
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Annotation\Route;
+
+class WildcardController extends AbstractController
+{
+    #[Route('/docs/{path}', name: 'docs', requirements: ['path' => '.+'])]
+    public function documentation(string $path): Response
+    {
+        return new Response(
+            sprintf('Documentation path: %s', $path)
+        );
+    }
+}
+```
+
+The requirement '.+' matches any characters, allowing routes like  
+/docs/guide/installation or /docs/api/v1/users. Useful for documentation  
+systems, file browsers, or nested category structures.  
+
+## JSON Response Routes
+
+Dedicated routes for JSON APIs.  
+
+```php
+<?php
+
+namespace App\Controller;
+
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Routing\Annotation\Route;
+
+#[Route('/api', defaults: ['_format' => 'json'])]
+class JsonApiController extends AbstractController
+{
+    #[Route('/status', name: 'api_status', methods: ['GET'])]
+    public function status(): JsonResponse
+    {
+        return $this->json([
+            'status' => 'online',
+            'version' => '1.0.0',
+            'timestamp' => time()
+        ]);
+    }
+
+    #[Route('/echo', name: 'api_echo', methods: ['POST'])]
+    public function echo(Request $request): JsonResponse
+    {
+        $data = json_decode($request->getContent(), true);
+        
+        return $this->json([
+            'received' => $data,
+            'timestamp' => time()
+        ]);
+    }
+}
+```
+
+Setting _format to json at the class level ensures all responses default  
+to JSON. This works seamlessly with Symfony's content negotiation and  
+makes API controllers cleaner and more consistent.  
+
+## Route Testing in Controllers
+
+Testing route generation within controller logic.  
+
+```php
+<?php
+
+namespace App\Controller;
+
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Exception\RouteNotFoundException;
+
+class RouteTestController extends AbstractController
+{
+    #[Route('/test-routes', name: 'test_routes')]
+    public function testRoutes(): Response
+    {
+        $results = [];
+        
+        try {
+            $results['product'] = $this->generateUrl('product_show', ['id' => 1]);
+        } catch (RouteNotFoundException $e) {
+            $results['product'] = 'Route not found';
+        }
+        
+        try {
+            $results['home'] = $this->generateUrl('home');
+        } catch (RouteNotFoundException $e) {
+            $results['home'] = 'Route not found';
+        }
+        
+        return $this->json($results);
+    }
+}
+```
+
+Use try-catch blocks when generating URLs for routes that might not exist.  
+RouteNotFoundException is thrown when referencing undefined routes. Useful  
+for debugging and validating route configuration.  
+
+## Regex in Route Paths
+
+Using regex patterns directly in route paths.  
+
+```php
+<?php
+
+namespace App\Controller;
+
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Annotation\Route;
+
+class RegexPathController extends AbstractController
+{
+    #[Route(
+        '/download/{filename}.{ext}',
+        name: 'file_download',
+        requirements: [
+            'filename' => '[a-zA-Z0-9_-]+',
+            'ext' => 'pdf|doc|docx|xls|xlsx'
+        ]
+    )]
+    public function download(string $filename, string $ext): Response
+    {
+        return new Response(
+            sprintf('Downloading: %s.%s', $filename, $ext)
+        );
+    }
+}
+```
+
+Constraints validate both the filename (alphanumeric plus dash/underscore)  
+and extension (specific file types only). This provides strong validation  
+before file operations, enhancing security.  
+
+## Route Expressions
+
+Advanced routing with expression conditions.  
+
+```php
+<?php
+
+namespace App\Controller;
+
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Annotation\Route;
+
+class ExpressionController extends AbstractController
+{
+    #[Route(
+        '/admin/panel',
+        name: 'admin_panel_ajax',
+        condition: "request.isXmlHttpRequest()"
+    )]
+    public function ajaxPanel(): Response
+    {
+        return $this->json(['panel' => 'data']);
+    }
+
+    #[Route(
+        '/admin/panel',
+        name: 'admin_panel_html'
+    )]
+    public function htmlPanel(): Response
+    {
+        return $this->render('admin/panel.html.twig');
+    }
+}
+```
+
+Conditions enable different routes for the same path based on request  
+properties. The first route only matches AJAX requests  
+(X-Requested-With: XMLHttpRequest), while the second handles regular  
+browser requests.  
+
+## Route Parameter Defaults in Attributes
+
+Setting multiple defaults efficiently.  
+
+```php
+<?php
+
+namespace App\Controller;
+
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Annotation\Route;
+
+class DefaultsController extends AbstractController
+{
+    #[Route(
+        '/browse/{category}/{page}/{sort}',
+        name: 'browse',
+        defaults: [
+            'category' => 'all',
+            'page' => 1,
+            'sort' => 'newest'
+        ],
+        requirements: [
+            'page' => '\d+',
+            'sort' => 'newest|oldest|popular'
+        ]
+    )]
+    public function browse(string $category, int $page, string $sort): Response
+    {
+        return $this->json([
+            'category' => $category,
+            'page' => $page,
+            'sort' => $sort
+        ]);
+    }
+}
+```
+
+Multiple defaults make all parameters optional. Users can visit /browse,  
+/browse/electronics, /browse/electronics/2, or the full path. Each segment  
+uses defaults when omitted, creating flexible URL structures.  
+
+## Maintenance Mode Routes
+
+Special routes for maintenance pages.  
+
+```php
+<?php
+
+namespace App\Controller;
+
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Annotation\Route;
+
+class MaintenanceController extends AbstractController
+{
+    #[Route(
+        '/maintenance',
+        name: 'maintenance_page',
+        condition: "env('MAINTENANCE_MODE') === 'true'"
+    )]
+    public function maintenance(): Response
+    {
+        $response = new Response(
+            $this->renderView('maintenance.html.twig')
+        );
+        
+        $response->setStatusCode(503);
+        $response->headers->set('Retry-After', '3600');
+        
+        return $response;
+    }
+}
+```
+
+Condition expressions can check environment variables. When MAINTENANCE_MODE  
+is enabled, this route becomes accessible. Set proper HTTP status codes  
+(503 Service Unavailable) and Retry-After headers for search engines.  
+
 ## Best Practices Summary
 
 Guidelines for effective routing.  
